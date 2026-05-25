@@ -23,10 +23,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run backend tests
-        run: gradle --no-daemon test
+        run: ./gradlew --no-daemon test
 
       - name: Build backend fat jar
-        run: gradle --no-daemon buildFatJar -x test
+        run: ./gradlew --no-daemon buildFatJar -x test
 
       - name: Start backend stack
         run: docker compose up -d --build postgres bff
@@ -79,4 +79,5 @@ jobs:
 
       - name: Run compose smoke test
         run: ./scripts/compose_smoke_upload.sh
+
 

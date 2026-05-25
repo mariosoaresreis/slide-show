@@ -99,23 +99,21 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        working-directory: infra
-        run: terraform init
-
-      - name: Terraform Apply (dev)
-        working-directory: infra
+      - name: Deploy Cloud Run (dev)
         run: |
-          terraform apply -auto-approve \
-            -var-file="envs/dev/terraform.tfvars" \
-            -var="image_tag=${{ github.sha }}"
+          gcloud run deploy bumble-bff-dev \
+            --image "${{ env.IMAGE }}:${{ github.sha }}" \
+            --region "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --platform managed \
+            --quiet
 
       - name: Print deployed URL
-        working-directory: infra
-        run: terraform output cloud_run_url
+        run: |
+          gcloud run services describe bumble-bff-dev \
+            --region "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --format='value(status.url)'
 
   # ── Deploy to Prod (manual approval) ─────────────────────────────────────────
   deploy-prod:
@@ -136,16 +134,18 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER_PROD }}
           service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT_PROD }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        working-directory: infra
-        run: terraform init -backend-config="prefix=terraform/prod"
-
-      - name: Terraform Apply (prod)
-        working-directory: infra
+      - name: Deploy Cloud Run (prod)
         run: |
-          terraform apply -auto-approve \
-            -var-file="envs/prod/terraform.tfvars" \
-            -var="image_tag=${{ github.sha }}"
+          gcloud run deploy bumble-bff-prod \
+            --image "${{ env.IMAGE }}:${{ github.sha }}" \
+            --region "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --platform managed \
+            --quiet
+
+      - name: Print deployed URL
+        run: |
+          gcloud run services describe bumble-bff-prod \
+            --region "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --format='value(status.url)'
