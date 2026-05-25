@@ -1,0 +1,367 @@
+openapi: "3.1.0"
+info:
+  title: Bumble Photo Slideshow BFF
+  version: "1.0.0"
+  description: |
+    Backend-for-Frontend for Bumble photo slideshow MVP.
+    Handles photo upload, retrieval, ordering and GCS signed URLs.
+  contact:
+    name: Bumble Engineering
+  license:
+    name: Private
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+  - url: https://bumble-bff-dev-xxxx.run.app
+    description: GCP Cloud Run – dev
+  - url: https://bumble-bff-prod-xxxx.run.app
+    description: GCP Cloud Run – prod
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: photos
+    description: Photo management and slideshow
+  - name: profiles
+    description: User profiles
+  - name: health
+    description: Liveness and readiness probes
+
+paths:
+  # ── Health ────────────────────────────────────────────────
+  /health/live:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      security: []
+      operationId: getLiveness
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Readiness probe (checks DB connection)
+      security: []
+      operationId: getReadiness
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Not ready yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Photos ───────────────────────────────────────────────
+  /v1/profiles/{profileId}/photos:
+    get:
+      tags: [photos]
+      summary: List all photos for a profile (ordered for slideshow)
+      operationId: listPhotos
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+      responses:
+        "200":
+          description: Ordered list of photos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      tags: [photos]
+      summary: Upload a new photo (returns GCS signed upload URL)
+      operationId: uploadPhoto
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadPhotoRequest"
+      responses:
+        "201":
+          description: Photo record created, signed URL ready for direct GCS upload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadPhotoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/profiles/{profileId}/photos/{photoId}:
+    get:
+      tags: [photos]
+      summary: Get a single photo with a short-lived signed view URL
+      operationId: getPhoto
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/PhotoId"
+      responses:
+        "200":
+          description: Photo details with signed URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [photos]
+      summary: Delete a photo (removes from GCS and DB)
+      operationId: deletePhoto
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/PhotoId"
+      responses:
+        "204":
+          description: Photo deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/profiles/{profileId}/photos/order:
+    put:
+      tags: [photos]
+      summary: Reorder photos for the slideshow
+      operationId: reorderPhotos
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderPhotosRequest"
+      responses:
+        "200":
+          description: Updated ordered list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ── Profiles ─────────────────────────────────────────────
+  /v1/profiles/{profileId}:
+    get:
+      tags: [profiles]
+      summary: Get profile (includes photo count + primary photo URL)
+      operationId: getProfile
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+      responses:
+        "200":
+          description: Profile data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+# ── Components ───────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PhotoId:
+      name: photoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    PhotoStatus:
+      type: string
+      enum: [PENDING_UPLOAD, PROCESSING, ACTIVE, DELETED]
+
+    PhotoResponse:
+      type: object
+      required: [id, profileId, status, sortOrder, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileId:
+          type: string
+          format: uuid
+        signedViewUrl:
+          type: string
+          format: uri
+          description: Short-lived GCS signed URL (15 min TTL). Null if not yet uploaded.
+        urlExpiresAt:
+          type: string
+          format: date-time
+        status:
+          $ref: "#/components/schemas/PhotoStatus"
+        sortOrder:
+          type: integer
+          minimum: 0
+        caption:
+          type: string
+          maxLength: 200
+          nullable: true
+        width:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          nullable: true
+        sizeBytes:
+          type: integer
+          format: int64
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PhotoListResponse:
+      type: object
+      required: [photos, total]
+      properties:
+        photos:
+          type: array
+          items:
+            $ref: "#/components/schemas/PhotoResponse"
+        total:
+          type: integer
+
+    UploadPhotoRequest:
+      type: object
+      required: [filename, contentType]
+      properties:
+        filename:
+          type: string
+          example: "photo.jpg"
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+        caption:
+          type: string
+          maxLength: 200
+          nullable: true
+        sortOrder:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    UploadPhotoResponse:
+      type: object
+      required: [photoId, signedUploadUrl, uploadExpiresAt]
+      properties:
+        photoId:
+          type: string
+          format: uuid
+          description: Created photo ID — use to call PATCH /confirm after GCS upload
+        signedUploadUrl:
+          type: string
+          format: uri
+          description: PUT directly to this URL with the image bytes (15 min TTL)
+        uploadExpiresAt:
+          type: string
+          format: date-time
+
+    ReorderPhotosRequest:
+      type: object
+      required: [orderedPhotoIds]
+      properties:
+        orderedPhotoIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: All photo IDs in desired display order
+
+    ProfileResponse:
+      type: object
+      required: [id, displayName, photoCount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        primaryPhotoUrl:
+          type: string
+          format: uri
+          nullable: true
+        photoCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN, DEGRADED]
+        timestamp:
+          type: string
+          format: date-time
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

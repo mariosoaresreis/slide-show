@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       bumble_bff
+      POSTGRES_USER:     bumble
+      POSTGRES_PASSWORD: bumble
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bumble -d bumble_bff"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  bff:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL:      jdbc:postgresql://postgres:5432/bumble_bff
+      DATABASE_USER:     bumble
+      DATABASE_PASSWORD: bumble
+      JWT_SECRET:        dev-secret-change-in-prod-min-32-chars!!
+      JWT_ISSUER:        https://bumble.com
+      JWT_AUDIENCE:      bumble-bff
+      GCP_PROJECT_ID:    bumble-dev
+      GCS_BUCKET:        bumble-photos-dev
+      DEV_MODE:          "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./UI
+    ports:
+      - "4200:80"
+    depends_on:
+      - bff
+
+volumes:
+  pgdata:

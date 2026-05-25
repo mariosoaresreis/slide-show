@@ -1,0 +1,7 @@
+.gradle/
+build/
+UI/node_modules/
+UI/.angular/
+UI/dist/
+.idea/
+*.iml

@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend-build-health:
+    name: Backend Build + Health Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run backend tests
+        run: gradle --no-daemon test
+
+      - name: Build backend fat jar
+        run: gradle --no-daemon buildFatJar -x test
+
+      - name: Start backend stack
+        run: docker compose up -d --build postgres bff
+
+      - name: Wait for backend health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8080/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "BFF health endpoint did not become ready" >&2
+          exit 1
+
+      - name: Stop backend stack
+        if: always()
+        run: docker compose down -v
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: UI
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: UI/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build -- --configuration production
+
+  compose-upload-smoke:
+    name: Compose Upload Smoke
+    runs-on: ubuntu-latest
+    needs: [backend-build-health, frontend-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run compose smoke test
+        run: ./scripts/compose_smoke_upload.sh
+
