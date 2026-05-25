@@ -1,5 +1,7 @@
 # Bumble Photo Slideshow BFF
 
+<!-- CI/CD pipeline ready: Terraform-managed infrastructure on GCP Cloud Run -->
+
 A production-grade **Backend-for-Frontend** built with Ktor 2.3, OpenAPI 3.1, and deployed on GCP Cloud Run via Terraform.
 
 ## Architecture
