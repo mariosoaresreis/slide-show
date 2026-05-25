@@ -11,6 +11,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.request.header
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.delete
@@ -113,7 +114,7 @@ fun Application.module() {
         json()
     }
 
-    val publicBaseUrl = System.getenv("PUBLIC_BASE_URL")
+    val configuredPublicBaseUrl = System.getenv("PUBLIC_BASE_URL")
         ?: "http://localhost:${System.getenv("PORT") ?: "8080"}"
 
     val createdAt = Instant.now().toString()
@@ -203,7 +204,20 @@ fun Application.module() {
                 )
             )
 
-            val uploadUrl = "$publicBaseUrl/mock-upload/$photoId"
+            val requestProto = call.request.header("X-Forwarded-Proto")
+            val requestHost = call.request.header("X-Forwarded-Host")
+                ?: call.request.header(HttpHeaders.Host)
+            val hasExternalHost = requestHost != null &&
+                !requestHost.startsWith("localhost") &&
+                !requestHost.startsWith("127.0.0.1") &&
+                !requestHost.startsWith("0.0.0.0")
+            val requestBaseUrl = if (hasExternalHost) {
+                "${requestProto ?: "https"}://$requestHost"
+            } else {
+                configuredPublicBaseUrl
+            }
+
+            val uploadUrl = "$requestBaseUrl/mock-upload/$photoId"
             call.respond(
                 HttpStatusCode.Created,
                 UploadPhotoResponse(

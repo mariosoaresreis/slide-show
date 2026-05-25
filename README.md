@@ -56,6 +56,11 @@ docker compose up --build
 
 This script builds and starts Compose, verifies health, runs a signed upload flow (`POST -> OPTIONS -> PUT -> GET`), and tears everything down.
 
+### Smoke-check a deployed Cloud Run URL
+```bash
+bash ./scripts/cloud_smoke_upload.sh https://YOUR_CLOUD_RUN_URL
+```
+
 ### Run without Docker (needs local Postgres)
 ```bash
 export DATABASE_URL=jdbc:postgresql://localhost:5432/bumble_bff
@@ -110,17 +115,19 @@ gsutil mb -p YOUR_PROJECT_ID gs://bumble-bff-tfstate
 
 # Enable APIs + provision infra
 cd infra
-terraform init
-terraform apply -var-file="envs/dev/terraform.tfvars" -var="image_tag=latest"
+terraform init -backend-config="bucket=bumble-bff-tfstate" -backend-config="prefix=terraform/dev"
+terraform apply -var-file="envs/dev/terraform.tfvars" -var="project_id=YOUR_PROJECT_ID" -var="image_tag=latest"
 ```
 
 ### CI/CD (GitHub Actions)
-Push to `main` → test → build Docker → push to Artifact Registry → `terraform apply` on dev → manual approval → prod.
+Push to `main` → test → Terraform validate → Terraform bootstrap of Artifact Registry → build Docker → push image → `terraform apply` on dev → deployed smoke test → manual approval → prod → deployed smoke test.
 
 Requires GitHub secrets:
 - `GCP_PROJECT_ID`
 - `WIF_PROVIDER` — Workload Identity Federation provider
 - `WIF_SERVICE_ACCOUNT` — SA email with AR + Cloud Run permissions
+- `TF_STATE_BUCKET` — GCS bucket used by the Terraform backend
+- `WIF_PROVIDER_PROD` and `WIF_SERVICE_ACCOUNT_PROD` for the production apply job
 
 ## Project structure
 

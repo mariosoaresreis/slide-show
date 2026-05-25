@@ -1,7 +1,12 @@
 .gradle/
 build/
-UI/node_modules/
+.idea/
 UI/.angular/
 UI/dist/
-.idea/
-*.iml
+UI/node_modules/
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+.tmp/
+
+

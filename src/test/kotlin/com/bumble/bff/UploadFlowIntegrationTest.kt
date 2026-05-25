@@ -2,6 +2,7 @@ package com.bumble.bff
 
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.options
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -91,6 +92,43 @@ class UploadFlowIntegrationTest {
         val photos = Json.decodeFromString<PhotoListResponse>(listResponse.bodyAsText())
         assertTrue(photos.photos.none { it.id == uploadResponse.photoId })
     }
+
+    @Test
+    fun `signed upload url uses forwarded headers when present`() = testApplication {
+        application { module() }
+
+        val createResponse = client.post("/v1/profiles/$profileId/photos") {
+            header("X-Forwarded-Proto", "https")
+            header("X-Forwarded-Host", "bumble-bff-dev-abc123-uc.a.run.app")
+            contentType(ContentType.Application.Json)
+            setBody("""{"filename":"remote.jpg","contentType":"image/jpeg"}""")
+        }
+
+        assertEquals(HttpStatusCode.Created, createResponse.status)
+        val uploadResponse = Json.decodeFromString<UploadPhotoResponse>(createResponse.bodyAsText())
+        assertEquals(
+            "https://bumble-bff-dev-abc123-uc.a.run.app/mock-upload/${uploadResponse.photoId}",
+            uploadResponse.signedUploadUrl,
+        )
+    }
+
+    @Test
+    fun `signed upload url ignores localhost host header`() = testApplication {
+        application { module() }
+
+        val createResponse = client.post("/v1/profiles/$profileId/photos") {
+            header(HttpHeaders.Host, "localhost")
+            header("X-Forwarded-Proto", "http")
+            contentType(ContentType.Application.Json)
+            setBody("""{"filename":"local-proxy.jpg","contentType":"image/jpeg"}""")
+        }
+
+        assertEquals(HttpStatusCode.Created, createResponse.status)
+        val uploadResponse = Json.decodeFromString<UploadPhotoResponse>(createResponse.bodyAsText())
+        assertTrue(uploadResponse.signedUploadUrl.startsWith("http://localhost:8080/mock-upload/"))
+    }
 }
+
+
 
 
