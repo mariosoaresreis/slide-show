@@ -13,7 +13,9 @@ import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.header
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -146,6 +148,8 @@ fun Application.module() {
 
     val createdAt = Instant.now().toString()
     val photosByProfile = ConcurrentHashMap<String, MutableList<PhotoRecord>>()
+    // Stores actual uploaded bytes for mock mode: photoId → Pair(bytes, contentType)
+    val photoBlobs = ConcurrentHashMap<String, Pair<ByteArray, String>>()
 
     // Pre-populate demo profile so the UI is immediately useful on first launch
     seedDemoData(photosByProfile)
@@ -264,10 +268,37 @@ fun Application.module() {
             val record = allPhotos.firstOrNull { it.id == photoId }
                 ?: return@put call.respond(HttpStatusCode.NotFound)
 
+            // Read the actual image bytes the client PUTs
+            val contentType = call.request.header(HttpHeaders.ContentType) ?: "image/jpeg"
+            val bytes = call.receiveStream().readBytes()
+            photoBlobs[photoId] = Pair(bytes, contentType)
+
+            // Build a URL that serves the real uploaded image back
+            val requestProto = call.request.header("X-Forwarded-Proto")
+            val requestHost  = call.request.header("X-Forwarded-Host")
+                ?: call.request.header(HttpHeaders.Host)
+            val hasExternalHost = requestHost != null &&
+                !requestHost.startsWith("localhost") &&
+                !requestHost.startsWith("127.0.0.1") &&
+                !requestHost.startsWith("0.0.0.0")
+            val baseUrl = if (hasExternalHost) {
+                "${requestProto ?: "https"}://$requestHost"
+            } else {
+                configuredPublicBaseUrl
+            }
+
             record.status = "ACTIVE"
-            record.urlExpiresAt = Instant.now().plusSeconds(900).toString()
-            record.signedViewUrl = "https://picsum.photos/seed/${record.id}/900/1200"
+            record.urlExpiresAt = Instant.now().plusSeconds(86400).toString()
+            record.signedViewUrl = "$baseUrl/mock-photo/$photoId"
             call.respond(HttpStatusCode.OK)
+        }
+
+        // Serves the actual uploaded image bytes back to the UI
+        get("/mock-photo/{photoId}") {
+            val photoId = call.parameters["photoId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val (bytes, contentType) = photoBlobs[photoId]
+                ?: return@get call.respond(HttpStatusCode.NotFound)
+            call.respondBytes(bytes, io.ktor.http.ContentType.parse(contentType))
         }
 
         get("/v1/profiles/{profileId}/photos/{photoId}") {
