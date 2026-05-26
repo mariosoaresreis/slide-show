@@ -92,6 +92,33 @@ data class PhotoRecord(
     var urlExpiresAt: String? = null,
 )
 
+// ── Demo seed data ────────────────────────────────────────────────────────────
+private const val DEMO_PROFILE_ID = "00000000-0000-0000-0000-000000000001"
+
+private val DEMO_PHOTOS = listOf(
+    Triple("Morning in the city",  "morning",  "https://picsum.photos/seed/morning/900/1200"),
+    Triple("Golden hour",          "golden",   "https://picsum.photos/seed/golden/900/1200"),
+    Triple("Weekend adventure",    "adventure","https://picsum.photos/seed/adventure/900/1200"),
+    Triple("Catching some waves",  "waves",    "https://picsum.photos/seed/waves/900/1200"),
+)
+
+fun seedDemoData(photosByProfile: ConcurrentHashMap<String, MutableList<PhotoRecord>>) {
+    val now = Instant.now()
+    val photos = DEMO_PHOTOS.mapIndexed { i, (caption, seed, url) ->
+        PhotoRecord(
+            id           = "demo-photo-$seed",
+            profileId    = DEMO_PROFILE_ID,
+            status       = "ACTIVE",
+            sortOrder    = i,
+            caption      = caption,
+            createdAt    = now.minusSeconds((DEMO_PHOTOS.size - i) * 3600L).toString(),
+            signedViewUrl = url,
+            urlExpiresAt  = now.plusSeconds(86400).toString(),
+        )
+    }
+    photosByProfile[DEMO_PROFILE_ID] = photos.toMutableList()
+}
+
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     embeddedServer(Netty, host = "0.0.0.0", port = port, module = Application::module).start(wait = true)
@@ -119,6 +146,9 @@ fun Application.module() {
 
     val createdAt = Instant.now().toString()
     val photosByProfile = ConcurrentHashMap<String, MutableList<PhotoRecord>>()
+
+    // Pre-populate demo profile so the UI is immediately useful on first launch
+    seedDemoData(photosByProfile)
 
     fun photoToResponse(photo: PhotoRecord) = PhotoResponse(
         id = photo.id,

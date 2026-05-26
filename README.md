@@ -1,8 +1,25 @@
 # Bumble Photo Slideshow BFF
 
-<!-- CI/CD pipeline ready: Terraform-managed infrastructure on GCP Cloud Run -->
-
 A production-grade **Backend-for-Frontend** built with Ktor 2.3, OpenAPI 3.1, and deployed on GCP Cloud Run via Terraform.
+
+---
+
+## ⚡ Try it in 30 seconds
+
+```bash
+make up          # build + start everything
+```
+
+Then open **http://localhost:4200** — the slideshow loads with demo photos immediately.  
+Upload your own photos, drag to reorder, navigate with arrow keys or swipe.
+
+```bash
+make test        # backend unit + integration tests
+make smoke       # full end-to-end upload flow smoke test
+make down        # stop everything and clean up
+```
+
+---
 
 ## Architecture
 
