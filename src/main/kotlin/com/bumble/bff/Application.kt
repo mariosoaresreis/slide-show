@@ -21,6 +21,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.util.UUID
@@ -268,9 +270,9 @@ fun Application.module() {
             val record = allPhotos.firstOrNull { it.id == photoId }
                 ?: return@put call.respond(HttpStatusCode.NotFound)
 
-            // Read the actual image bytes the client PUTs
+            // Read the actual image bytes the client PUTs (blocking → IO dispatcher)
             val contentType = call.request.header(HttpHeaders.ContentType) ?: "image/jpeg"
-            val bytes = call.receiveStream().readBytes()
+            val bytes = withContext(Dispatchers.IO) { call.receiveStream().readBytes() }
             photoBlobs[photoId] = Pair(bytes, contentType)
 
             // Build a URL that serves the real uploaded image back
